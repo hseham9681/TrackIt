@@ -6,6 +6,74 @@
 <title>₹ TrackIt</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBeAK3UFb0rfWt14G8dv518laQpPi2hRRc",
+  authDomain: "trackit-b60fa.firebaseapp.com",
+  projectId: "trackit-b60fa",
+  storageBucket: "trackit-b60fa.firebasestorage.app",
+  messagingSenderId: "674157370310",
+  appId: "1:674157370310:web:a9f49100d2d04f51ff70c7"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ── FIREBASE HELPERS ─────────────────────────────────────────────────────────
+async function fbGetUsers() {
+  try {
+    const snap = await getDocs(collection(db, "users"));
+    return snap.docs.map(d => d.data());
+  } catch(e) { console.error(e); return []; }
+}
+
+async function fbSaveUser(user) {
+  try {
+    await setDoc(doc(db, "users", user.username), user);
+  } catch(e) { console.error(e); }
+}
+
+async function fbGetUserData(username) {
+  try {
+    const snap = await getDoc(doc(db, "userData", username));
+    return snap.exists() ? snap.data() : { transactions: [], budgets: {} };
+  } catch(e) { return { transactions: [], budgets: {} }; }
+}
+
+async function fbSaveUserData(username, data) {
+  try {
+    await setDoc(doc(db, "userData", username), data);
+  } catch(e) { console.error(e); }
+}
+
+async function fbDeleteUser(username) {
+  try {
+    await deleteDoc(doc(db, "users", username));
+    await deleteDoc(doc(db, "userData", username));
+  } catch(e) { console.error(e); }
+}
+
+async function fbGetSettings() {
+  try {
+    const snap = await getDoc(doc(db, "appSettings", "global"));
+    return snap.exists() ? snap.data() : { darkMode: false };
+  } catch(e) { return { darkMode: false }; }
+}
+
+async function fbSaveSettings(settings) {
+  try {
+    await setDoc(doc(db, "appSettings", "global"), settings);
+  } catch(e) { console.error(e); }
+}
+
+// ── EXPOSE TO WINDOW ─────────────────────────────────────────────────────────
+window._fb = { fbGetUsers, fbSaveUser, fbGetUserData, fbSaveUserData, fbDeleteUser, fbGetSettings, fbSaveSettings };
+window.dispatchEvent(new Event('firebaseReady'));
+</script>
 <style>
 :root{
   --bg:#f5f4f0;--surface:#ffffff;--surface2:#f0efe9;--border:#e2e0d8;
@@ -23,7 +91,16 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;transition:background .2s,color .2s;}
-#auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem;}
+
+/* LOADER */
+#loader{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;}
+.loader-logo{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;letter-spacing:-1px;margin-bottom:16px;}
+.loader-spin{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loader-text{font-size:13px;color:var(--text3);margin-top:12px;}
+
+/* AUTH */
+#auth-screen{display:none;align-items:center;justify-content:center;min-height:100vh;padding:1rem;}
 .auth-box{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2.5rem 2rem;width:100%;max-width:380px;text-align:center;}
 .auth-logo{font-family:var(--font-head);font-size:28px;font-weight:800;letter-spacing:-1px;margin-bottom:4px;}
 .auth-sub{font-size:13px;color:var(--text2);margin-bottom:2rem;}
@@ -40,13 +117,14 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-hei
 .pin-dot.error{background:var(--red);border-color:var(--red);}
 .pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:1rem 0;}
 .pin-btn{padding:14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-family:var(--font-head);font-size:18px;font-weight:600;cursor:pointer;transition:background .1s,transform .1s;}
-.pin-btn:hover{background:var(--border);}
-.pin-btn:active{transform:scale(.95);}
-.pin-btn.del{font-size:14px;color:var(--text2);}
-.pin-btn.zero{grid-column:2;}
+.pin-btn:hover{background:var(--border);}.pin-btn:active{transform:scale(.95);}
+.pin-btn.del{font-size:14px;color:var(--text2);}.pin-btn.zero{grid-column:2;}
 .auth-btn{width:100%;padding:11px;border:none;border-radius:var(--radius-sm);background:var(--accent);color:var(--accent-fg);font-family:var(--font-body);font-size:14px;font-weight:500;cursor:pointer;margin-top:4px;}
-.auth-btn:hover{opacity:.85;}
+.auth-btn:hover{opacity:.85;}.auth-btn:disabled{opacity:.5;cursor:not-allowed;}
 .auth-err{font-size:12px;color:var(--red);margin-top:8px;min-height:18px;}
+.auth-info{font-size:12px;color:var(--blue);margin-top:8px;min-height:18px;}
+
+/* NAV */
 #app{display:none;}
 nav{display:flex;align-items:center;justify-content:space-between;padding:0 2rem;height:56px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
 .nav-logo{font-family:var(--font-head);font-size:18px;font-weight:700;letter-spacing:-.5px;}
@@ -62,6 +140,8 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:0 2rem
 .dark-toggle.on::after{transform:translateX(16px);}
 .logout-btn{padding:5px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:none;color:var(--text2);font-family:var(--font-body);font-size:12px;cursor:pointer;}
 .logout-btn:hover{background:var(--surface2);}
+
+/* PAGES */
 .page{display:none;padding:1.5rem 2rem;max-width:1100px;margin:0 auto;}
 .page.active{display:block;}
 .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:10px;}
@@ -90,8 +170,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:0 2rem
 .breakdown-item{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);}
 .breakdown-item:last-child{border-bottom:none;}
 .bk-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.bk-name{flex:1;font-size:13px;}
-.bk-amt{font-size:13px;font-weight:600;}
+.bk-name{flex:1;font-size:13px;}.bk-amt{font-size:13px;font-weight:600;}
 .tx-form{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem 1.25rem;margin-bottom:1.25rem;}
 .tx-form-title{font-family:var(--font-head);font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);margin-bottom:.9rem;display:flex;align-items:center;justify-content:space-between;}
 .form-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;}
@@ -99,15 +178,11 @@ label.fl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:
 input,select{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-family:var(--font-body);font-size:13px;outline:none;}
 input:focus,select:focus{border-color:var(--accent);}
 .btn{padding:8px 16px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-family:var(--font-body);font-size:13px;font-weight:500;}
-.btn-primary{background:var(--accent);color:var(--accent-fg);}
-.btn-primary:hover{opacity:.85;}
+.btn-primary{background:var(--accent);color:var(--accent-fg);}.btn-primary:hover{opacity:.85;}
 .btn-sm{padding:5px 10px;font-size:12px;}
-.btn-ghost{background:none;border:1px solid var(--border);color:var(--text2);}
-.btn-ghost:hover{background:var(--surface2);}
-.btn-danger{background:none;border:1px solid var(--border);color:var(--red);}
-.btn-danger:hover{background:var(--red);color:#fff;}
-.btn-edit{background:none;border:1px solid var(--border);color:var(--blue);}
-.btn-edit:hover{background:var(--blue);color:#fff;}
+.btn-ghost{background:none;border:1px solid var(--border);color:var(--text2);}.btn-ghost:hover{background:var(--surface2);}
+.btn-danger{background:none;border:1px solid var(--border);color:var(--red);}.btn-danger:hover{background:var(--red);color:#fff;}
+.btn-edit{background:none;border:1px solid var(--border);color:var(--blue);}.btn-edit:hover{background:var(--blue);color:#fff;}
 .filters{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center;}
 .search-input{flex:1;min-width:160px;max-width:260px;}
 .filter-select{width:auto;min-width:130px;}
@@ -127,8 +202,7 @@ input:focus,select:focus{border-color:var(--accent);}
 .budget-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
 .budget-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;}
 .budget-item-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
-.budget-cat{font-size:13px;font-weight:600;}
-.budget-pct{font-size:12px;font-weight:700;}
+.budget-cat{font-size:13px;font-weight:600;}.budget-pct{font-size:12px;font-weight:700;}
 .budget-bar{height:6px;border-radius:3px;background:var(--border);margin-bottom:6px;overflow:hidden;}
 .budget-fill{height:100%;border-radius:3px;transition:width .5s;}
 .budget-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--text3);}
@@ -150,10 +224,11 @@ input:focus,select:focus{border-color:var(--accent);}
 .admin-username{font-family:var(--font-head);font-size:15px;font-weight:600;}
 .admin-role{font-size:11px;color:var(--text3);}
 .admin-stats{display:flex;gap:12px;margin-bottom:10px;}
-.admin-stat{font-size:12px;color:var(--text2);}
-.admin-stat span{font-weight:600;color:var(--text);}
+.admin-stat{font-size:12px;color:var(--text2);}.admin-stat span{font-weight:600;color:var(--text);}
 .admin-actions{display:flex;gap:6px;flex-wrap:wrap;}
 .badge-admin{display:inline-block;font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(30,77,140,.12);color:var(--blue);border:1px solid rgba(30,77,140,.2);margin-left:6px;vertical-align:middle;}
+.sync-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--green);padding:3px 8px;border-radius:20px;background:rgba(45,106,79,.1);border:1px solid rgba(45,106,79,.2);}
+.sync-badge.syncing{color:var(--amber);}
 .toast{position:fixed;bottom:24px;right:24px;background:var(--accent);color:var(--accent-fg);padding:10px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;z-index:9999;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;}
 .toast.show{opacity:1;transform:translateY(0);}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;align-items:center;justify-content:center;}
@@ -176,6 +251,14 @@ input:focus,select:focus{border-color:var(--accent);}
 </head>
 <body>
 
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-logo">₹ TrackIt</div>
+  <div class="loader-spin"></div>
+  <div class="loader-text">Connecting to cloud...</div>
+</div>
+
+<!-- AUTH -->
 <div id="auth-screen">
   <div class="auth-box">
     <div class="auth-logo">₹ TrackIt</div>
@@ -200,7 +283,8 @@ input:focus,select:focus{border-color:var(--accent);}
         <button class="pin-btn" onclick="pinInput('login',7)">7</button><button class="pin-btn" onclick="pinInput('login',8)">8</button><button class="pin-btn" onclick="pinInput('login',9)">9</button>
         <button class="pin-btn zero" onclick="pinInput('login',0)">0</button><button class="pin-btn del" onclick="pinDelete('login')">⌫</button>
       </div>
-      <button class="auth-btn" onclick="doLogin()">Login</button>
+      <button class="auth-btn" id="login-btn" onclick="doLogin()">Login</button>
+      <div class="auth-info" id="login-info"></div>
       <div class="auth-err" id="login-err"></div>
     </div>
     <div id="register-panel" style="display:none">
@@ -219,15 +303,19 @@ input:focus,select:focus{border-color:var(--accent);}
         <button class="pin-btn" onclick="pinInput('reg',7)">7</button><button class="pin-btn" onclick="pinInput('reg',8)">8</button><button class="pin-btn" onclick="pinInput('reg',9)">9</button>
         <button class="pin-btn zero" onclick="pinInput('reg',0)">0</button><button class="pin-btn del" onclick="pinDelete('reg')">⌫</button>
       </div>
-      <button class="auth-btn" onclick="doRegister()">Create Account</button>
+      <button class="auth-btn" id="reg-btn" onclick="doRegister()">Create Account</button>
       <div class="auth-err" id="reg-err"></div>
     </div>
   </div>
 </div>
 
+<!-- MAIN APP -->
 <div id="app">
   <nav>
-    <div class="nav-logo">₹ TrackIt</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="nav-logo">₹ TrackIt</div>
+      <span class="sync-badge" id="sync-badge">☁ Synced</span>
+    </div>
     <div class="nav-tabs">
       <button class="nav-tab active" onclick="showPage('dashboard',this)">Dashboard</button>
       <button class="nav-tab" onclick="showPage('transactions',this)">Transactions</button>
@@ -246,6 +334,7 @@ input:focus,select:focus{border-color:var(--accent);}
     </div>
   </nav>
 
+  <!-- DASHBOARD -->
   <div class="page active" id="page-dashboard">
     <div class="page-header">
       <div class="page-title">Dashboard</div>
@@ -277,11 +366,12 @@ input:focus,select:focus{border-color:var(--accent);}
       </div>
     </div>
     <div class="grid2">
-      <div class="card"><div class="card-head"><span class="card-title">Spending by Category</span><span class="card-sub">Donut</span></div><div class="chart-wrap chart-donut"><canvas id="donutChart" role="img" aria-label="Donut chart">Category spending</canvas></div></div>
-      <div class="card"><div class="card-head"><span class="card-title">Category Breakdown</span><span class="card-sub">Bar</span></div><div class="chart-wrap chart-bar"><canvas id="barChart" role="img" aria-label="Bar chart">Category bar</canvas></div></div>
+      <div class="card"><div class="card-head"><span class="card-title">Spending by Category</span><span class="card-sub">Donut</span></div><div class="chart-wrap chart-donut"><canvas id="donutChart" role="img" aria-label="Donut chart">Spending</canvas></div></div>
+      <div class="card"><div class="card-head"><span class="card-title">Category Breakdown</span><span class="card-sub">Bar</span></div><div class="chart-wrap chart-bar"><canvas id="barChart" role="img" aria-label="Bar chart">Spending bar</canvas></div></div>
     </div>
   </div>
 
+  <!-- TRANSACTIONS -->
   <div class="page" id="page-transactions">
     <div class="page-header">
       <div class="page-title">Transactions</div>
@@ -328,6 +418,7 @@ input:focus,select:focus{border-color:var(--accent);}
     </div>
   </div>
 
+  <!-- BUDGET -->
   <div class="page" id="page-budget">
     <div class="page-header">
       <div class="page-title">Budget Manager</div>
@@ -340,11 +431,13 @@ input:focus,select:focus{border-color:var(--accent);}
     <div class="budget-grid" id="budget-grid"></div>
   </div>
 
+  <!-- HISTORY -->
   <div class="page" id="page-history">
     <div class="page-header"><div class="page-title">Monthly History</div></div>
     <div class="history-grid" id="history-grid"></div>
   </div>
 
+  <!-- ADMIN -->
   <div class="page" id="page-admin">
     <div class="page-header">
       <div class="page-title">Admin Panel</div>
@@ -354,6 +447,7 @@ input:focus,select:focus{border-color:var(--accent);}
   </div>
 </div>
 
+<!-- PIN RESET MODAL -->
 <div class="modal-overlay" id="reset-modal">
   <div class="modal">
     <div class="modal-title">Reset PIN</div>
@@ -383,26 +477,34 @@ const CATS_EXP=['Bills & Recharge','Chats & Snacks','Home Expense','Provisions (
 const CATS_INC=['Salary','Freelance','Business','Rental Income','Investment Return','Gift','Other Income'];
 const COLORS=['#e63946','#f4a261','#2a9d8f','#457b9d','#6d6875','#e9c46a','#52b788','#c77dff','#fb8500','#023e8a','#e76f51','#8ecae6','#b5838d','#6a4c93','#1982c4','#8ac926','#ff595e','#ffca3a','#6a994e','#4361ee','#f72585','#7209b7','#3a0ca3','#4cc9f0'];
 
-function getStore(){try{return JSON.parse(localStorage.getItem('trackit-store')||'{}');}catch(e){return {};}}
-function setStore(s){localStorage.setItem('trackit-store',JSON.stringify(s));}
-function getUsers(){return getStore().users||[];}
-function setUsers(u){const s=getStore();s.users=u;setStore(s);}
-function getUserData(un){const s=getStore();return(s.userData&&s.userData[un])||{transactions:[],budgets:{}};}
-function setUserData(un,d){const s=getStore();if(!s.userData)s.userData={};s.userData[un]=d;setStore(s);}
-function getSettings(){return getStore().settings||{darkMode:false};}
-function setSettings(st){const s=getStore();s.settings=st;setStore(s);}
-
-let cu=null,uState={transactions:[],budgets:{},currentYear:new Date().getFullYear(),currentMonth:new Date().getMonth()};
-let darkMode=false,donutInst=null,barInst=null,editingId=null;
+let cu=null, uState={transactions:[],budgets:{},currentYear:new Date().getFullYear(),currentMonth:new Date().getMonth()};
+let darkMode=false, donutInst=null, barInst=null, editingId=null;
 const pins={login:'',reg:'',reset:''};
-let attempts=0,lockUntil=0,resetTarget=null;
+let attempts=0, lockUntil=0, resetTarget=null;
+let fbReady=false;
 
+// Wait for Firebase to be ready
+window.addEventListener('firebaseReady', ()=>{ fbReady=true; onFirebaseReady(); });
+
+async function onFirebaseReady(){
+  // Load dark mode setting
+  try {
+    const s = await window._fb.fbGetSettings();
+    darkMode = s.darkMode || false;
+    document.body.classList.toggle('dark', darkMode);
+  } catch(e){}
+  // Hide loader, show auth
+  document.getElementById('loader').style.display='none';
+  document.getElementById('auth-screen').style.display='flex';
+}
+
+// ── PIN ───────────────────────────────────────────────────────────────────────
 function pinInput(ctx,d){
   if(pins[ctx].length>=4)return;
-  pins[ctx]+=String(d);updatePinDots(ctx);
-  if(ctx==='login'&&pins[ctx].length===4)setTimeout(doLogin,120);
+  pins[ctx]+=String(d); updatePinDots(ctx);
+  if(ctx==='login'&&pins[ctx].length===4) setTimeout(doLogin,120);
 }
-function pinDelete(ctx){pins[ctx]=pins[ctx].slice(0,-1);updatePinDots(ctx);}
+function pinDelete(ctx){ pins[ctx]=pins[ctx].slice(0,-1); updatePinDots(ctx); }
 function updatePinDots(ctx){
   const p=ctx==='login'?'ld':ctx==='reg'?'rd':'rsd';
   for(let i=0;i<4;i++){const e=document.getElementById(p+i);if(e){e.classList.toggle('filled',i<pins[ctx].length);e.classList.remove('error');}}
@@ -417,84 +519,117 @@ function switchAuthTab(tab){
   document.querySelectorAll('.auth-tab').forEach((b,i)=>b.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register')));
   document.getElementById('login-panel').style.display=tab==='login'?'block':'none';
   document.getElementById('register-panel').style.display=tab==='register'?'block':'none';
-  document.getElementById('login-err').textContent='';document.getElementById('reg-err').textContent='';
-  pins.login='';pins.reg='';updatePinDots('login');updatePinDots('reg');
+  document.getElementById('login-err').textContent=''; document.getElementById('reg-err').textContent='';
+  pins.login=''; pins.reg=''; updatePinDots('login'); updatePinDots('reg');
 }
 
-function doRegister(){
+// ── REGISTER ──────────────────────────────────────────────────────────────────
+async function doRegister(){
   const un=document.getElementById('reg-username').value.trim().toLowerCase();
-  const pin=pins.reg;const err=document.getElementById('reg-err');
+  const pin=pins.reg; const err=document.getElementById('reg-err');
+  const btn=document.getElementById('reg-btn');
   if(!un||un.length<3){err.textContent='Username must be at least 3 characters.';return;}
   if(!/^[a-z0-9_]+$/.test(un)){err.textContent='Only letters, numbers, underscores.';return;}
   if(pin.length!==4){err.textContent='Please enter a 4-digit PIN.';flashErr('reg');return;}
-  const users=getUsers();
-  if(users.find(u=>u.username===un)){err.textContent='Username already taken.';return;}
+  btn.disabled=true; btn.textContent='Creating...';
+  const users=await window._fb.fbGetUsers();
+  if(users.find(u=>u.username===un)){err.textContent='Username already taken.';btn.disabled=false;btn.textContent='Create Account';return;}
   const isFirst=users.length===0;
-  users.push({username:un,pin,role:isFirst?'admin':'user',createdAt:Date.now()});
-  setUsers(users);setUserData(un,{transactions:[],budgets:{}});
+  const newUser={username:un,pin,role:isFirst?'admin':'user',createdAt:Date.now()};
+  await window._fb.fbSaveUser(newUser);
+  await window._fb.fbSaveUserData(un,{transactions:[],budgets:{}});
   showToast(isFirst?'Admin account created 👑 Welcome!':'Account created! Welcome 🎉');
-  pins.reg='';updatePinDots('reg');
-  document.getElementById('reg-username').value='';err.textContent='';
+  pins.reg=''; updatePinDots('reg');
+  document.getElementById('reg-username').value=''; err.textContent='';
   document.getElementById('login-username').value=un;
+  btn.disabled=false; btn.textContent='Create Account';
   switchAuthTab('login');
 }
 
-function doLogin(){
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+async function doLogin(){
   const now=Date.now();
-  if(now<lockUntil){
-    document.getElementById('login-err').textContent=`Too many attempts. Wait ${Math.ceil((lockUntil-now)/1000)}s.`;
-    flashErr('login');return;
-  }
+  if(now<lockUntil){document.getElementById('login-err').textContent=`Too many attempts. Wait ${Math.ceil((lockUntil-now)/1000)}s.`;flashErr('login');return;}
   const un=document.getElementById('login-username').value.trim().toLowerCase();
-  const pin=pins.login;const err=document.getElementById('login-err');
+  const pin=pins.login; const err=document.getElementById('login-err'); const info=document.getElementById('login-info');
+  const btn=document.getElementById('login-btn');
   if(!un){err.textContent='Enter your username.';return;}
   if(pin.length!==4){err.textContent='Enter your 4-digit PIN.';flashErr('login');return;}
-  const user=getUsers().find(u=>u.username===un);
+  btn.disabled=true; btn.textContent='Logging in...'; info.textContent='Checking credentials...';
+  const users=await window._fb.fbGetUsers();
+  const user=users.find(u=>u.username===un);
   if(!user||user.pin!==pin){
     attempts++;
     if(attempts>=3){lockUntil=Date.now()+30000;attempts=0;err.textContent='Too many attempts. Locked for 30s.';}
     else err.textContent=`Wrong username or PIN. (${3-attempts} left)`;
-    flashErr('login');pins.login='';return;
+    flashErr('login'); pins.login=''; btn.disabled=false; btn.textContent='Login'; info.textContent=''; return;
   }
-  attempts=0;cu=user;
-  uState={...getUserData(un),currentYear:new Date().getFullYear(),currentMonth:new Date().getMonth()};
-  darkMode=getSettings().darkMode||false;
-  document.body.classList.toggle('dark',darkMode);
-  document.getElementById('darkToggle').classList.toggle('on',darkMode);
+  attempts=0;
+  info.textContent='Loading your data...';
+  cu=user;
+  const data=await window._fb.fbGetUserData(un);
+  uState={...data, currentYear:new Date().getFullYear(), currentMonth:new Date().getMonth()};
+  if(!uState.transactions) uState.transactions=[];
+  if(!uState.budgets) uState.budgets={};
   document.getElementById('auth-screen').style.display='none';
   document.getElementById('app').style.display='block';
   document.getElementById('nav-username').textContent=cu.username;
   document.getElementById('nav-avatar').textContent=cu.username[0].toUpperCase();
   document.getElementById('admin-nav-tab').style.display=cu.role==='admin'?'inline-flex':'none';
   document.getElementById('f-date').value=new Date().toISOString().slice(0,10);
-  pins.login='';updatePinDots('login');
-  populateCats();updateMonthLabels();applyRecurring();
-  renderDashboard();renderTxList();renderBudget();renderHistory();
-  if(cu.role==='admin')renderAdmin();
+  pins.login=''; updatePinDots('login');
+  btn.disabled=false; btn.textContent='Login'; info.textContent='';
+  populateCats(); updateMonthLabels(); applyRecurring();
+  renderDashboard(); renderTxList(); renderBudget(); renderHistory();
+  if(cu.role==='admin') renderAdmin();
 }
 
-function doLogout(){
-  saveUD();cu=null;editingId=null;donutInst=null;barInst=null;
+// ── LOGOUT ────────────────────────────────────────────────────────────────────
+async function doLogout(){
+  await saveUD();
+  cu=null; editingId=null; donutInst=null; barInst=null;
   document.getElementById('app').style.display='none';
   document.getElementById('auth-screen').style.display='flex';
   document.getElementById('login-err').textContent='';
-  pins.login='';updatePinDots('login');
+  document.getElementById('login-info').textContent='';
+  pins.login=''; updatePinDots('login');
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-dashboard').classList.add('active');
   document.querySelectorAll('.nav-tab').forEach((b,i)=>b.classList.toggle('active',i===0));
 }
 
-function saveUD(){if(cu)setUserData(cu.username,{transactions:uState.transactions,budgets:uState.budgets});}
+// ── SYNC ──────────────────────────────────────────────────────────────────────
+let saveTimer=null;
+function scheduleSave(){
+  const badge=document.getElementById('sync-badge');
+  if(badge){badge.textContent='↑ Syncing...';badge.className='sync-badge syncing';}
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{
+    await saveUD();
+    if(badge){badge.textContent='☁ Synced';badge.className='sync-badge';}
+  },1200);
+}
+
+async function saveUD(){
+  if(!cu) return;
+  try {
+    await window._fb.fbSaveUserData(cu.username,{transactions:uState.transactions,budgets:uState.budgets});
+  } catch(e){ console.error('Save failed',e); }
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
 function fmt(n){return '₹'+Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:0});}
 function mStr(y,m){return new Date(y,m,1).toLocaleString('en-IN',{month:'long',year:'numeric'});}
 function mKey(y,m){return `${y}-${String(m+1).padStart(2,'0')}`;}
 function curTxs(){return uState.transactions.filter(t=>t.monthKey===mKey(uState.currentYear,uState.currentMonth));}
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
 
-function toggleDark(){
-  darkMode=!darkMode;document.body.classList.toggle('dark',darkMode);
+async function toggleDark(){
+  darkMode=!darkMode;
+  document.body.classList.toggle('dark',darkMode);
   document.getElementById('darkToggle').classList.toggle('on',darkMode);
-  const s=getSettings();s.darkMode=darkMode;setSettings(s);renderDashboard();
+  await window._fb.fbSaveSettings({darkMode});
+  renderDashboard();
 }
 
 function showPage(p,btn){
@@ -524,82 +659,87 @@ function populateCats(){
   ft.innerHTML='<option value="expense">Expense</option><option value="income">Income</option>';
   const fc=document.getElementById('f-category');
   function ref(){fc.innerHTML=(ft.value==='income'?CATS_INC:CATS_EXP).map(c=>`<option>${c}</option>`).join('');}
-  ft.onchange=ref;ref();
+  ft.onchange=ref; ref();
   document.getElementById('filterCat').innerHTML='<option value="">All Categories</option>'+[...CATS_EXP,...CATS_INC].map(c=>`<option>${c}</option>`).join('');
 }
 
+// ── TRANSACTIONS ──────────────────────────────────────────────────────────────
 function submitTransaction(){
-  const type=document.getElementById('f-type').value,date=document.getElementById('f-date').value;
+  const type=document.getElementById('f-type').value, date=document.getElementById('f-date').value;
   const amount=parseFloat(document.getElementById('f-amount').value);
-  const category=document.getElementById('f-category').value,method=document.getElementById('f-method').value;
+  const category=document.getElementById('f-category').value, method=document.getElementById('f-method').value;
   const desc=document.getElementById('f-desc').value.trim();
-  const recurring=document.getElementById('f-recurring').checked,recurFreq=document.getElementById('f-recur-freq').value;
+  const recurring=document.getElementById('f-recurring').checked, recurFreq=document.getElementById('f-recur-freq').value;
   if(!date||isNaN(amount)||amount<=0){alert('Please enter a valid date and amount.');return;}
-  const d=new Date(date),monthKey=mKey(d.getFullYear(),d.getMonth());
+  const d=new Date(date), monthKey=mKey(d.getFullYear(),d.getMonth());
   if(editingId){
     const idx=uState.transactions.findIndex(t=>t.id===editingId);
     if(idx>-1)uState.transactions[idx]={...uState.transactions[idx],type,date,amount,category,method,desc,recurring,recurFreq,monthKey};
-    showToast('Updated ✓');cancelEdit();
+    showToast('Updated ✓'); cancelEdit();
   }else{
     uState.transactions.unshift({id:Date.now()+''+Math.random().toString(36).slice(2,6),type,date,amount,category,method,desc,recurring,recurFreq,monthKey});
     showToast('Added ✓');
-    document.getElementById('f-amount').value='';document.getElementById('f-desc').value='';document.getElementById('f-recurring').checked=false;
+    document.getElementById('f-amount').value=''; document.getElementById('f-desc').value=''; document.getElementById('f-recurring').checked=false;
   }
-  saveUD();renderDashboard();renderTxList();
+  scheduleSave(); renderDashboard(); renderTxList();
 }
 
 function startEdit(id){
-  const tx=uState.transactions.find(t=>t.id===id);if(!tx)return;
+  const tx=uState.transactions.find(t=>t.id===id); if(!tx)return;
   editingId=id;
-  const ft=document.getElementById('f-type');ft.value=tx.type;ft.dispatchEvent(new Event('change'));
+  const ft=document.getElementById('f-type'); ft.value=tx.type; ft.dispatchEvent(new Event('change'));
   setTimeout(()=>{document.getElementById('f-category').value=tx.category;},20);
-  document.getElementById('f-date').value=tx.date;document.getElementById('f-amount').value=tx.amount;
-  document.getElementById('f-method').value=tx.method;document.getElementById('f-desc').value=tx.desc||'';
-  document.getElementById('f-recurring').checked=tx.recurring||false;document.getElementById('f-recur-freq').value=tx.recurFreq||'monthly';
+  document.getElementById('f-date').value=tx.date; document.getElementById('f-amount').value=tx.amount;
+  document.getElementById('f-method').value=tx.method; document.getElementById('f-desc').value=tx.desc||'';
+  document.getElementById('f-recurring').checked=tx.recurring||false; document.getElementById('f-recur-freq').value=tx.recurFreq||'monthly';
   document.getElementById('form-mode-label').textContent='✏️ Editing Transaction';
   document.getElementById('submit-btn').textContent='Save Changes';
   document.getElementById('cancel-edit-btn').style.display='inline-flex';
-  document.querySelector('.tx-form').scrollIntoView({behavior:'smooth',block:'start'});renderTxList();
+  document.querySelector('.tx-form').scrollIntoView({behavior:'smooth',block:'start'}); renderTxList();
 }
 
 function cancelEdit(){
-  editingId=null;document.getElementById('f-amount').value='';document.getElementById('f-desc').value='';
-  document.getElementById('f-recurring').checked=false;document.getElementById('f-date').value=new Date().toISOString().slice(0,10);
-  document.getElementById('form-mode-label').textContent='New Entry';document.getElementById('submit-btn').textContent='Add';
+  editingId=null; document.getElementById('f-amount').value=''; document.getElementById('f-desc').value='';
+  document.getElementById('f-recurring').checked=false; document.getElementById('f-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('form-mode-label').textContent='New Entry'; document.getElementById('submit-btn').textContent='Add';
   document.getElementById('cancel-edit-btn').style.display='none';
-  const ft=document.getElementById('f-type');ft.value='expense';ft.dispatchEvent(new Event('change'));renderTxList();
+  const ft=document.getElementById('f-type'); ft.value='expense'; ft.dispatchEvent(new Event('change')); renderTxList();
 }
 
 function deleteTx(id){
   if(!confirm('Delete this transaction?'))return;
   uState.transactions=uState.transactions.filter(t=>t.id!==id);
-  if(editingId===id)cancelEdit();
-  saveUD();renderDashboard();renderTxList();showToast('Deleted');
+  if(editingId===id) cancelEdit();
+  scheduleSave(); renderDashboard(); renderTxList(); showToast('Deleted');
 }
 
 function applyRecurring(){
   const today=new Date();
   uState.transactions.filter(t=>t.recurring).forEach(t=>{
     let next=new Date(t.date);
-    if(t.recurFreq==='monthly')next.setMonth(next.getMonth()+1);
-    else if(t.recurFreq==='weekly')next.setDate(next.getDate()+7);
+    if(t.recurFreq==='monthly') next.setMonth(next.getMonth()+1);
+    else if(t.recurFreq==='weekly') next.setDate(next.getDate()+7);
     else next.setDate(next.getDate()+1);
     while(next<=today){
-      const nd=next.toISOString().slice(0,10),mk=mKey(next.getFullYear(),next.getMonth());
+      const nd=next.toISOString().slice(0,10), mk=mKey(next.getFullYear(),next.getMonth());
       if(!uState.transactions.find(x=>x.recurParent===t.id&&x.date===nd))
         uState.transactions.push({...t,id:Date.now()+'r'+Math.random().toString(36).slice(2,5),date:nd,monthKey:mk,recurring:false,recurParent:t.id});
-      if(t.recurFreq==='monthly')next.setMonth(next.getMonth()+1);
-      else if(t.recurFreq==='weekly')next.setDate(next.getDate()+7);
+      if(t.recurFreq==='monthly') next.setMonth(next.getMonth()+1);
+      else if(t.recurFreq==='weekly') next.setDate(next.getDate()+7);
       else next.setDate(next.getDate()+1);
     }
-  });saveUD();
+  });
+  scheduleSave();
 }
 
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function renderDashboard(){
-  const txs=curTxs(),exp=txs.filter(t=>t.type==='expense'),inc=txs.filter(t=>t.type==='income');
-  const spent=exp.reduce((s,t)=>s+t.amount,0),earned=inc.reduce((s,t)=>s+t.amount,0),net=earned-spent;
-  document.getElementById('d-spent').textContent=fmt(spent);document.getElementById('d-spent-count').textContent=exp.length+' transactions';
-  document.getElementById('d-earned').textContent=fmt(earned);document.getElementById('d-earned-count').textContent=inc.length+' transactions';
+  const txs=curTxs(), exp=txs.filter(t=>t.type==='expense'), inc=txs.filter(t=>t.type==='income');
+  const spent=exp.reduce((s,t)=>s+t.amount,0), earned=inc.reduce((s,t)=>s+t.amount,0), net=earned-spent;
+  document.getElementById('d-spent').textContent=fmt(spent);
+  document.getElementById('d-spent-count').textContent=exp.length+' transactions';
+  document.getElementById('d-earned').textContent=fmt(earned);
+  document.getElementById('d-earned-count').textContent=inc.length+' transactions';
   document.getElementById('d-net').textContent=(net<0?'-':'')+fmt(net);
   document.getElementById('d-net').className='m-val '+(net>=0?'green':'red');
   const cm={};exp.forEach(t=>{cm[t.category]=(cm[t.category]||0)+t.amount;});
@@ -620,28 +760,29 @@ function renderDashboard(){
 }
 
 function renderCharts(sorted){
-  const labels=sorted.slice(0,8).map(x=>x[0]),data=sorted.slice(0,8).map(x=>x[1]);
+  const labels=sorted.slice(0,8).map(x=>x[0]), data=sorted.slice(0,8).map(x=>x[1]);
   const colors=labels.map((_,i)=>COLORS[i%COLORS.length]);
-  const gc=darkMode?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)',tc=darkMode?'#9a9890':'#6b6860';
+  const gc=darkMode?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)', tc=darkMode?'#9a9890':'#6b6860';
   if(donutInst)donutInst.destroy();
   donutInst=new Chart(document.getElementById('donutChart'),{
-    type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:2,borderColor:darkMode?'#1c1c1a':'#fff',hoverOffset:6}]},
+    type:'doughnut', data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:2,borderColor:darkMode?'#1c1c1a':'#fff',hoverOffset:6}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.raw)}}}}
   });
   if(barInst)barInst.destroy();
   barInst=new Chart(document.getElementById('barChart'),{
-    type:'bar',data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},
+    type:'bar', data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.raw)}}},
       scales:{x:{ticks:{color:tc,callback:v=>'₹'+Number(v).toLocaleString('en-IN')},grid:{color:gc}},y:{ticks:{color:tc,font:{size:11}},grid:{display:false}}}}
   });
 }
 
+// ── TX LIST ───────────────────────────────────────────────────────────────────
 function renderTxList(){
   const search=document.getElementById('searchInput').value.toLowerCase();
-  const cat=document.getElementById('filterCat').value,type=document.getElementById('filterType').value,method=document.getElementById('filterMethod').value;
+  const cat=document.getElementById('filterCat').value, type=document.getElementById('filterType').value, method=document.getElementById('filterMethod').value;
   const txs=curTxs().filter(t=>{
     if(search&&!t.category.toLowerCase().includes(search)&&!(t.desc||'').toLowerCase().includes(search))return false;
-    if(cat&&t.category!==cat)return false;if(type&&t.type!==type)return false;if(method&&t.method!==method)return false;return true;
+    if(cat&&t.category!==cat)return false; if(type&&t.type!==type)return false; if(method&&t.method!==method)return false; return true;
   });
   const body=document.getElementById('tx-body');
   if(!txs.length){body.innerHTML='<div class="empty-state">No transactions found</div>';return;}
@@ -658,14 +799,15 @@ function renderTxList(){
     </div>`).join('');
 }
 
+// ── BUDGET ────────────────────────────────────────────────────────────────────
 function renderBudget(){
-  const txs=curTxs().filter(t=>t.type==='expense'),cs={};
+  const txs=curTxs().filter(t=>t.type==='expense'), cs={};
   txs.forEach(t=>{cs[t.category]=(cs[t.category]||0)+t.amount;});
   const cats=[...new Set([...Object.keys(cs),...Object.keys(uState.budgets)])];
   const grid=document.getElementById('budget-grid');
   if(!cats.length){grid.innerHTML='<div class="empty-state" style="grid-column:1/-1">Add transactions to manage budgets</div>';return;}
   grid.innerHTML=cats.map((cat,i)=>{
-    const spent=cs[cat]||0,budget=uState.budgets[cat]||0;
+    const spent=cs[cat]||0, budget=uState.budgets[cat]||0;
     const pct=budget>0?Math.min(100,Math.round(spent/budget*100)):0;
     const color=pct>=100?'#c1440e':pct>=75?'#b45309':'#2d6a4f';
     return `<div class="budget-item">
@@ -678,24 +820,24 @@ function renderBudget(){
 }
 
 function setBudget(cat,inp){
-  const v=parseFloat(document.getElementById(inp).value);
-  if(isNaN(v)||v<0)return;
-  uState.budgets[cat]=v;saveUD();renderBudget();showToast('Budget saved ✓');
+  const v=parseFloat(document.getElementById(inp).value); if(isNaN(v)||v<0)return;
+  uState.budgets[cat]=v; scheduleSave(); renderBudget(); showToast('Budget saved ✓');
 }
 
+// ── HISTORY ───────────────────────────────────────────────────────────────────
 function renderHistory(){
   const mm={};
   uState.transactions.forEach(t=>{
     if(!mm[t.monthKey])mm[t.monthKey]={spent:0,earned:0,count:0};
-    if(t.type==='expense')mm[t.monthKey].spent+=t.amount;else mm[t.monthKey].earned+=t.amount;
+    if(t.type==='expense')mm[t.monthKey].spent+=t.amount; else mm[t.monthKey].earned+=t.amount;
     mm[t.monthKey].count++;
   });
   const keys=Object.keys(mm).sort((a,b)=>b.localeCompare(a));
   const grid=document.getElementById('history-grid');
   if(!keys.length){grid.innerHTML='<div class="empty-state" style="grid-column:1/-1">No history yet</div>';return;}
   grid.innerHTML=keys.map(k=>{
-    const[y,m]=k.split('-').map(Number),label=new Date(y,m-1,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
-    const d=mm[k],net=d.earned-d.spent;
+    const[y,m]=k.split('-').map(Number), label=new Date(y,m-1,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
+    const d=mm[k], net=d.earned-d.spent;
     return `<div class="history-card" onclick="jumpToMonth(${y},${m-1})">
       <div class="history-month">${label}</div>
       <div class="history-row"><span>Expenses</span><span style="color:var(--red)">${fmt(d.spent)}</span></div>
@@ -707,20 +849,23 @@ function renderHistory(){
 }
 
 function jumpToMonth(y,m){
-  uState.currentYear=y;uState.currentMonth=m;updateMonthLabels();
+  uState.currentYear=y; uState.currentMonth=m; updateMonthLabels();
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach((b,i)=>b.classList.toggle('active',i===0));
   document.getElementById('page-dashboard').classList.add('active');
-  renderDashboard();renderTxList();renderBudget();
+  renderDashboard(); renderTxList(); renderBudget();
 }
 
-function renderAdmin(){
+// ── ADMIN ─────────────────────────────────────────────────────────────────────
+async function renderAdmin(){
   if(!cu||cu.role!=='admin')return;
-  const users=getUsers();
+  const users=await window._fb.fbGetUsers();
   document.getElementById('admin-user-count').textContent=users.length+' registered users';
-  document.getElementById('admin-grid').innerHTML=users.map(u=>{
-    const d=getUserData(u.username),txCount=d.transactions.length;
-    const spent=d.transactions.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const stats=await Promise.all(users.map(async u=>{
+    const d=await window._fb.fbGetUserData(u.username);
+    return{...u, txCount:(d.transactions||[]).length, spent:(d.transactions||[]).filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0)};
+  }));
+  document.getElementById('admin-grid').innerHTML=stats.map(u=>{
     const isSelf=u.username===cu.username;
     return `<div class="admin-user-card">
       <div class="admin-user-head">
@@ -731,8 +876,8 @@ function renderAdmin(){
         </div>
       </div>
       <div class="admin-stats">
-        <div class="admin-stat">Txns: <span>${txCount}</span></div>
-        <div class="admin-stat">Spent: <span>${fmt(spent)}</span></div>
+        <div class="admin-stat">Txns: <span>${u.txCount}</span></div>
+        <div class="admin-stat">Spent: <span>${fmt(u.spent)}</span></div>
       </div>
       <div class="admin-actions">
         <button class="btn btn-ghost btn-sm" onclick="openResetModal('${u.username}')">Reset PIN</button>
@@ -743,41 +888,45 @@ function renderAdmin(){
   }).join('');
 }
 
-function adminDelete(un){
+async function adminDelete(un){
   if(!confirm(`Delete account "${un}" and ALL their data? This cannot be undone.`))return;
-  setUsers(getUsers().filter(u=>u.username!==un));
-  const s=getStore();if(s.userData)delete s.userData[un];setStore(s);
-  showToast('User deleted');renderAdmin();
+  await window._fb.fbDeleteUser(un);
+  showToast('User deleted'); renderAdmin();
 }
 
-function adminMakeAdmin(un){
+async function adminMakeAdmin(un){
   if(!confirm(`Make "${un}" an admin?`))return;
-  const users=getUsers(),u=users.find(x=>x.username===un);
-  if(u)u.role='admin';setUsers(users);showToast(un+' is now an admin 👑');renderAdmin();
+  const users=await window._fb.fbGetUsers();
+  const u=users.find(x=>x.username===un); if(u){u.role='admin'; await window._fb.fbSaveUser(u);}
+  showToast(un+' is now an admin 👑'); renderAdmin();
 }
 
 function openResetModal(un){
-  resetTarget=un;pins.reset='';updatePinDots('reset');
+  resetTarget=un; pins.reset=''; updatePinDots('reset');
   document.getElementById('reset-modal-sub').textContent=`Set new PIN for "${un}"`;
   document.getElementById('reset-err').textContent='';
   document.getElementById('reset-modal').classList.add('open');
 }
 function closeResetModal(){document.getElementById('reset-modal').classList.remove('open');resetTarget=null;}
-function confirmResetPin(){
+
+async function confirmResetPin(){
   if(pins.reset.length!==4){document.getElementById('reset-err').textContent='Enter a 4-digit PIN.';flashErr('reset');return;}
-  const users=getUsers(),u=users.find(x=>x.username===resetTarget);
-  if(u)u.pin=pins.reset;setUsers(users);closeResetModal();showToast(`PIN reset for ${resetTarget} ✓`);
+  const users=await window._fb.fbGetUsers();
+  const u=users.find(x=>x.username===resetTarget);
+  if(u){u.pin=pins.reset; await window._fb.fbSaveUser(u);}
+  closeResetModal(); showToast(`PIN reset for ${resetTarget} ✓`);
 }
 
+// ── EXPORT ────────────────────────────────────────────────────────────────────
 function exportCSV(){
-  const txs=curTxs();if(!txs.length){alert('No transactions to export.');return;}
+  const txs=curTxs(); if(!txs.length){alert('No transactions to export.');return;}
   const rows=[['Date','Type','Category','Description','Amount','Method','Recurring']];
   txs.forEach(t=>rows.push([t.date,t.type,t.category,t.desc||'',t.amount,t.method,t.recurring?t.recurFreq:'No']));
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download=`trackit-${cu.username}-${mKey(uState.currentYear,uState.currentMonth)}.csv`;
-  a.click();showToast('CSV exported ✓');
+  a.click(); showToast('CSV exported ✓');
 }
 </script>
 </body>
