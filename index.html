@@ -487,13 +487,53 @@ let fbReady=false;
 window.addEventListener('firebaseReady', ()=>{ fbReady=true; onFirebaseReady(); });
 
 async function onFirebaseReady(){
-  // Load dark mode setting
   try {
     const s = await window._fb.fbGetSettings();
     darkMode = s.darkMode || false;
     document.body.classList.toggle('dark', darkMode);
   } catch(e){}
-  // Hide loader, show auth
+
+  // 🔥 AUTO LOGIN LOGIC
+  const savedUser = localStorage.getItem("trackit_user");
+
+  if (savedUser) {
+    const users = await window._fb.fbGetUsers();
+    const user = users.find(u => u.username === savedUser);
+
+    if (user) {
+      cu = user;
+
+      const data = await window._fb.fbGetUserData(savedUser);
+      uState = {
+        ...data,
+        currentYear: new Date().getFullYear(),
+        currentMonth: new Date().getMonth()
+      };
+
+      document.getElementById('loader').style.display='none';
+      document.getElementById('auth-screen').style.display='none';
+      document.getElementById('app').style.display='block';
+
+      document.getElementById('nav-username').textContent=cu.username;
+      document.getElementById('nav-avatar').textContent=cu.username[0].toUpperCase();
+      document.getElementById('admin-nav-tab').style.display=cu.role==='admin'?'inline-flex':'none';
+
+      document.getElementById('f-date').value=new Date().toISOString().slice(0,10);
+
+      populateCats();
+      updateMonthLabels();
+      applyRecurring();
+      renderDashboard();
+      renderTxList();
+      renderBudget();
+      renderHistory();
+      if(cu.role==='admin') renderAdmin();
+
+      return;
+    }
+  }
+
+  // fallback → show login
   document.getElementById('loader').style.display='none';
   document.getElementById('auth-screen').style.display='flex';
 }
