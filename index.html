@@ -502,6 +502,7 @@ async function onFirebaseReady(){
 
     if (user) {
       cu = user;
+      localStorage.setItem("trackit_user", user.username);
 
       const data = await window._fb.fbGetUserData(savedUser);
       uState = {
@@ -627,6 +628,7 @@ async function doLogin(){
 // ── LOGOUT ────────────────────────────────────────────────────────────────────
 async function doLogout(){
   await saveUD();
+  localStorage.removeItem("trackit_user"); // 🔥 important
   cu=null; editingId=null; donutInst=null; barInst=null;
   document.getElementById('app').style.display='none';
   document.getElementById('auth-screen').style.display='flex';
