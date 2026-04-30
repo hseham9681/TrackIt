@@ -9,10 +9,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400;1,9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 
-<!-- Firebase (unchanged) -->
+<!-- Firebase -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  sendPasswordResetEmail, signOut, onAuthStateChanged, deleteUser
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBeAK3UFb0rfWt14G8dv518laQpPi2hRRc",
@@ -25,7 +29,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
+// ── FIRESTORE HELPERS ──────────────────────────────────────
 async function fbGetUsers() {
   try { const snap = await getDocs(collection(db, "users")); return snap.docs.map(d => d.data()); }
   catch(e) { console.error(e); return []; }
@@ -52,7 +58,50 @@ async function fbSaveSettings(settings) {
   try { await setDoc(doc(db, "appSettings", "global"), settings); } catch(e) { console.error(e); }
 }
 
-window._fb = { fbGetUsers, fbSaveUser, fbGetUserData, fbSaveUserData, fbDeleteUser, fbGetSettings, fbSaveSettings };
+// ── FIREBASE AUTH HELPERS (email login) ────────────────────
+function mapAuthError(e){
+  const code = e?.code || '';
+  if(code.includes('invalid-email')) return 'That email looks invalid.';
+  if(code.includes('email-already-in-use')) return 'That email is already registered. Try logging in.';
+  if(code.includes('weak-password')) return 'Password should be at least 6 characters.';
+  if(code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found'))
+    return 'Wrong email or password.';
+  if(code.includes('too-many-requests')) return 'Too many attempts. Try again in a minute.';
+  if(code.includes('operation-not-allowed')) return 'Email/Password sign-in is not enabled in Firebase Console.';
+  if(code.includes('network')) return 'Network error — check your connection.';
+  return e?.message || 'Something went wrong.';
+}
+
+async function fbEmailRegister(email, password){
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    return { ok:true, uid:cred.user.uid, email:cred.user.email };
+  } catch(e) { return { ok:false, error:mapAuthError(e) }; }
+}
+
+async function fbEmailLogin(email, password){
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    return { ok:true, uid:cred.user.uid, email:cred.user.email };
+  } catch(e) { return { ok:false, error:mapAuthError(e) }; }
+}
+
+async function fbEmailLogout(){
+  try { await signOut(auth); } catch(e) { console.error(e); }
+}
+
+async function fbSendReset(email){
+  try {
+    await sendPasswordResetEmail(auth, email);
+    return { ok:true };
+  } catch(e) { return { ok:false, error:mapAuthError(e) }; }
+}
+
+window._fb = {
+  fbGetUsers, fbSaveUser, fbGetUserData, fbSaveUserData, fbDeleteUser,
+  fbGetSettings, fbSaveSettings,
+  fbEmailRegister, fbEmailLogin, fbEmailLogout, fbSendReset
+};
 window.dispatchEvent(new Event('firebaseReady'));
 </script>
 
@@ -265,6 +314,29 @@ body::after{
   border-radius:var(--radius-md);
   padding:5px;
   margin-bottom:1.5rem;
+}
+.method-picker{
+  display:flex;gap:6px;
+  margin-bottom:1.25rem;
+  padding:4px;
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  border-radius:99px;
+}
+.method-btn{
+  flex:1;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:8px 12px;
+  border:none;background:none;
+  border-radius:99px;
+  font-family:var(--font-body);font-size:12.5px;font-weight:600;
+  color:var(--ink-2);cursor:pointer;
+  transition:all .2s ease;
+}
+.method-btn.active{
+  background:var(--ink);
+  color:var(--bg);
+  box-shadow:var(--shadow-sm);
 }
 .auth-tab{
   flex:1;padding:9px;
@@ -1081,6 +1153,16 @@ input[type="checkbox"]{
   display:block;font-size:15px;
 }
 .admin-actions{display:flex;gap:6px;flex-wrap:wrap;}
+.auth-method-badge{
+  display:inline-block;
+  font-size:10px;padding:2px 8px;
+  border-radius:99px;
+  font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;
+  margin-right:4px;
+}
+.auth-method-badge.email{background:var(--mint-soft);color:var(--mint);}
+.auth-method-badge.pin{background:var(--butter-soft);color:var(--ink-2);}
 
 .badge-admin{
   display:inline-block;
@@ -1273,50 +1355,132 @@ input[type="checkbox"]{
       <div class="auth-logo">TrackIt</div>
       <div class="auth-sub">your money, but friendlier ✿</div>
 
-      <div class="auth-tabs">
-        <button class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
-        <button class="auth-tab" onclick="switchAuthTab('register')">Register</button>
+      <!-- Method picker: Email vs PIN -->
+      <div class="method-picker">
+        <button class="method-btn active" id="method-email-btn" onclick="switchMethod('email')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+          Email
+        </button>
+        <button class="method-btn" id="method-pin-btn" onclick="switchMethod('pin')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          PIN
+        </button>
       </div>
 
-      <div id="login-panel">
-        <div class="auth-input-wrap">
-          <label class="auth-label">Username</label>
-          <input class="auth-input" type="text" id="login-username" placeholder="hello there!" autocomplete="off"/>
+      <!-- ═══ EMAIL METHOD ═══ -->
+      <div id="method-email-panel">
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="email-tab-login" onclick="switchEmailTab('login')">Login</button>
+          <button class="auth-tab" id="email-tab-register" onclick="switchEmailTab('register')">Register</button>
         </div>
-        <div class="auth-input-wrap"><label class="auth-label">4-Digit PIN</label></div>
-        <div class="pin-display" id="login-pin-display">
-          <div class="pin-dot" id="ld0"></div><div class="pin-dot" id="ld1"></div>
-          <div class="pin-dot" id="ld2"></div><div class="pin-dot" id="ld3"></div>
+
+        <!-- EMAIL LOGIN -->
+        <div id="email-login-panel">
+          <div class="auth-input-wrap">
+            <label class="auth-label">Email</label>
+            <input class="auth-input" type="email" id="email-login-email" placeholder="you@example.com" autocomplete="email"/>
+          </div>
+          <div class="auth-input-wrap">
+            <label class="auth-label">Password</label>
+            <input class="auth-input" type="password" id="email-login-password" placeholder="your password" autocomplete="current-password"/>
+          </div>
+          <div style="text-align:right;margin:-6px 0 12px;">
+            <a href="#" onclick="event.preventDefault();showForgotPanel();" style="font-size:12.5px;color:var(--coral);font-weight:600;text-decoration:none;">Forgot password?</a>
+          </div>
+          <button class="auth-btn" id="email-login-btn" onclick="doEmailLogin()">Let me in →</button>
+          <div class="auth-info" id="email-login-info"></div>
+          <div class="auth-err" id="email-login-err"></div>
         </div>
-        <div class="pin-pad">
-          <button class="pin-btn" onclick="pinInput('login',1)">1</button><button class="pin-btn" onclick="pinInput('login',2)">2</button><button class="pin-btn" onclick="pinInput('login',3)">3</button>
-          <button class="pin-btn" onclick="pinInput('login',4)">4</button><button class="pin-btn" onclick="pinInput('login',5)">5</button><button class="pin-btn" onclick="pinInput('login',6)">6</button>
-          <button class="pin-btn" onclick="pinInput('login',7)">7</button><button class="pin-btn" onclick="pinInput('login',8)">8</button><button class="pin-btn" onclick="pinInput('login',9)">9</button>
-          <button class="pin-btn zero" onclick="pinInput('login',0)">0</button><button class="pin-btn del" onclick="pinDelete('login')">⌫</button>
+
+        <!-- EMAIL REGISTER -->
+        <div id="email-register-panel" style="display:none">
+          <div class="auth-input-wrap">
+            <label class="auth-label">Username</label>
+            <input class="auth-input" type="text" id="email-reg-username" placeholder="pick a friendly name..." autocomplete="off"/>
+          </div>
+          <div class="auth-input-wrap">
+            <label class="auth-label">Email</label>
+            <input class="auth-input" type="email" id="email-reg-email" placeholder="you@example.com" autocomplete="email"/>
+          </div>
+          <div class="auth-input-wrap">
+            <label class="auth-label">Password (min 6 chars)</label>
+            <input class="auth-input" type="password" id="email-reg-password" placeholder="choose a strong password" autocomplete="new-password"/>
+          </div>
+          <div class="auth-input-wrap">
+            <label class="auth-label">Confirm password</label>
+            <input class="auth-input" type="password" id="email-reg-password2" placeholder="type it again" autocomplete="new-password"/>
+          </div>
+          <button class="auth-btn" id="email-reg-btn" onclick="doEmailRegister()">Create my account ✨</button>
+          <div class="auth-info" id="email-reg-info"></div>
+          <div class="auth-err" id="email-reg-err"></div>
         </div>
-        <button class="auth-btn" id="login-btn" onclick="doLogin()">Let me in →</button>
-        <div class="auth-info" id="login-info"></div>
-        <div class="auth-err" id="login-err"></div>
+
+        <!-- FORGOT PASSWORD -->
+        <div id="email-forgot-panel" style="display:none">
+          <div style="font-family:var(--font-display);font-size:20px;font-weight:600;font-style:italic;margin-bottom:6px;">Reset your password</div>
+          <p style="font-size:13px;color:var(--ink-2);margin-bottom:1.25rem;line-height:1.55;">
+            Enter your email and we'll send you a reset link.
+          </p>
+          <div class="auth-input-wrap">
+            <label class="auth-label">Email</label>
+            <input class="auth-input" type="email" id="email-forgot-email" placeholder="you@example.com" autocomplete="email"/>
+          </div>
+          <button class="auth-btn" id="email-forgot-btn" onclick="doSendReset()">Send reset link 📧</button>
+          <div style="text-align:center;margin-top:14px;">
+            <a href="#" onclick="event.preventDefault();hideForgotPanel();" style="font-size:12.5px;color:var(--ink-2);font-weight:500;text-decoration:none;">← Back to login</a>
+          </div>
+          <div class="auth-info" id="email-forgot-info"></div>
+          <div class="auth-err" id="email-forgot-err"></div>
+        </div>
       </div>
 
-      <div id="register-panel" style="display:none">
-        <div class="auth-input-wrap">
-          <label class="auth-label">Username</label>
-          <input class="auth-input" type="text" id="reg-username" placeholder="pick something fun..." autocomplete="off"/>
+      <!-- ═══ PIN METHOD ═══ -->
+      <div id="method-pin-panel" style="display:none">
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="pin-tab-login" onclick="switchAuthTab('login')">Login</button>
+          <button class="auth-tab" id="pin-tab-register" onclick="switchAuthTab('register')">Register</button>
         </div>
-        <div class="auth-input-wrap"><label class="auth-label">Set 4-Digit PIN</label></div>
-        <div class="pin-display" id="reg-pin-display">
-          <div class="pin-dot" id="rd0"></div><div class="pin-dot" id="rd1"></div>
-          <div class="pin-dot" id="rd2"></div><div class="pin-dot" id="rd3"></div>
+
+        <div id="login-panel">
+          <div class="auth-input-wrap">
+            <label class="auth-label">Username</label>
+            <input class="auth-input" type="text" id="login-username" placeholder="hello there!" autocomplete="off"/>
+          </div>
+          <div class="auth-input-wrap"><label class="auth-label">4-Digit PIN</label></div>
+          <div class="pin-display" id="login-pin-display">
+            <div class="pin-dot" id="ld0"></div><div class="pin-dot" id="ld1"></div>
+            <div class="pin-dot" id="ld2"></div><div class="pin-dot" id="ld3"></div>
+          </div>
+          <div class="pin-pad">
+            <button class="pin-btn" onclick="pinInput('login',1)">1</button><button class="pin-btn" onclick="pinInput('login',2)">2</button><button class="pin-btn" onclick="pinInput('login',3)">3</button>
+            <button class="pin-btn" onclick="pinInput('login',4)">4</button><button class="pin-btn" onclick="pinInput('login',5)">5</button><button class="pin-btn" onclick="pinInput('login',6)">6</button>
+            <button class="pin-btn" onclick="pinInput('login',7)">7</button><button class="pin-btn" onclick="pinInput('login',8)">8</button><button class="pin-btn" onclick="pinInput('login',9)">9</button>
+            <button class="pin-btn zero" onclick="pinInput('login',0)">0</button><button class="pin-btn del" onclick="pinDelete('login')">⌫</button>
+          </div>
+          <button class="auth-btn" id="login-btn" onclick="doLogin()">Let me in →</button>
+          <div class="auth-info" id="login-info"></div>
+          <div class="auth-err" id="login-err"></div>
         </div>
-        <div class="pin-pad">
-          <button class="pin-btn" onclick="pinInput('reg',1)">1</button><button class="pin-btn" onclick="pinInput('reg',2)">2</button><button class="pin-btn" onclick="pinInput('reg',3)">3</button>
-          <button class="pin-btn" onclick="pinInput('reg',4)">4</button><button class="pin-btn" onclick="pinInput('reg',5)">5</button><button class="pin-btn" onclick="pinInput('reg',6)">6</button>
-          <button class="pin-btn" onclick="pinInput('reg',7)">7</button><button class="pin-btn" onclick="pinInput('reg',8)">8</button><button class="pin-btn" onclick="pinInput('reg',9)">9</button>
-          <button class="pin-btn zero" onclick="pinInput('reg',0)">0</button><button class="pin-btn del" onclick="pinDelete('reg')">⌫</button>
+
+        <div id="register-panel" style="display:none">
+          <div class="auth-input-wrap">
+            <label class="auth-label">Username</label>
+            <input class="auth-input" type="text" id="reg-username" placeholder="pick something fun..." autocomplete="off"/>
+          </div>
+          <div class="auth-input-wrap"><label class="auth-label">Set 4-Digit PIN</label></div>
+          <div class="pin-display" id="reg-pin-display">
+            <div class="pin-dot" id="rd0"></div><div class="pin-dot" id="rd1"></div>
+            <div class="pin-dot" id="rd2"></div><div class="pin-dot" id="rd3"></div>
+          </div>
+          <div class="pin-pad">
+            <button class="pin-btn" onclick="pinInput('reg',1)">1</button><button class="pin-btn" onclick="pinInput('reg',2)">2</button><button class="pin-btn" onclick="pinInput('reg',3)">3</button>
+            <button class="pin-btn" onclick="pinInput('reg',4)">4</button><button class="pin-btn" onclick="pinInput('reg',5)">5</button><button class="pin-btn" onclick="pinInput('reg',6)">6</button>
+            <button class="pin-btn" onclick="pinInput('reg',7)">7</button><button class="pin-btn" onclick="pinInput('reg',8)">8</button><button class="pin-btn" onclick="pinInput('reg',9)">9</button>
+            <button class="pin-btn zero" onclick="pinInput('reg',0)">0</button><button class="pin-btn del" onclick="pinDelete('reg')">⌫</button>
+          </div>
+          <button class="auth-btn" id="reg-btn" onclick="doRegister()">Create my account ✨</button>
+          <div class="auth-err" id="reg-err"></div>
         </div>
-        <button class="auth-btn" id="reg-btn" onclick="doRegister()">Create my account ✨</button>
-        <div class="auth-err" id="reg-err"></div>
       </div>
     </div>
   </div>
@@ -1664,12 +1828,43 @@ function flashErr(ctx){
 }
 
 function switchAuthTab(tab){
-  document.querySelectorAll('.auth-tab').forEach((b,i)=>b.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register')));
+  // PIN method tabs only
+  const pinPanel=document.getElementById('method-pin-panel');
+  pinPanel.querySelectorAll('.auth-tab').forEach((b,i)=>b.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register')));
   document.getElementById('login-panel').style.display=tab==='login'?'block':'none';
   document.getElementById('register-panel').style.display=tab==='register'?'block':'none';
   document.getElementById('login-err').textContent=''; document.getElementById('reg-err').textContent='';
   pins.login=''; pins.reg=''; updatePinDots('login'); updatePinDots('reg');
 }
+
+function switchMethod(method){
+  document.getElementById('method-email-btn').classList.toggle('active',method==='email');
+  document.getElementById('method-pin-btn').classList.toggle('active',method==='pin');
+  document.getElementById('method-email-panel').style.display=method==='email'?'block':'none';
+  document.getElementById('method-pin-panel').style.display=method==='pin'?'block':'none';
+  // Reset to login views when switching
+  if(method==='email') switchEmailTab('login');
+}
+
+function switchEmailTab(tab){
+  document.getElementById('email-tab-login').classList.toggle('active',tab==='login');
+  document.getElementById('email-tab-register').classList.toggle('active',tab==='register');
+  document.getElementById('email-login-panel').style.display=tab==='login'?'block':'none';
+  document.getElementById('email-register-panel').style.display=tab==='register'?'block':'none';
+  document.getElementById('email-forgot-panel').style.display='none';
+  ['email-login-err','email-login-info','email-reg-err','email-reg-info','email-forgot-err','email-forgot-info']
+    .forEach(id=>{const e=document.getElementById(id);if(e)e.textContent='';});
+}
+
+function showForgotPanel(){
+  document.getElementById('email-login-panel').style.display='none';
+  document.getElementById('email-register-panel').style.display='none';
+  document.getElementById('email-forgot-panel').style.display='block';
+  // Pre-fill if user typed an email already
+  const t=document.getElementById('email-login-email').value.trim();
+  if(t) document.getElementById('email-forgot-email').value=t;
+}
+function hideForgotPanel(){ switchEmailTab('login'); }
 
 // ── REGISTER ─────────────────────────────────────────────────────
 async function doRegister(){
@@ -1686,7 +1881,7 @@ async function doRegister(){
   const newUser={username:un,pin,role:isFirst?'admin':'user',createdAt:Date.now()};
   await window._fb.fbSaveUser(newUser);
   await window._fb.fbSaveUserData(un,{transactions:[],budgets:{}});
-  showToast(isFirst?'Admin account created 👑':'Welcome aboard! 🎉');
+  showToast(isFirst?'Admin account created 👑':'PIN account created!');
   pins.reg=''; updatePinDots('reg');
   document.getElementById('reg-username').value=''; err.textContent='';
   document.getElementById('login-username').value=un;
@@ -1716,6 +1911,7 @@ async function doLogin(){
   info.textContent='Loading your data...';
   cu=user;
   localStorage.setItem("trackit_user", user.username);
+  localStorage.setItem("trackit_authMethod", "pin");
   const data=await window._fb.fbGetUserData(un);
   uState={...data, currentYear:new Date().getFullYear(), currentMonth:new Date().getMonth()};
   if(!uState.transactions) uState.transactions=[];
@@ -1725,10 +1921,123 @@ async function doLogin(){
   enterApp();
 }
 
+// ── EMAIL REGISTER ───────────────────────────────────────────────
+async function doEmailRegister(){
+  const un=document.getElementById('email-reg-username').value.trim().toLowerCase();
+  const email=document.getElementById('email-reg-email').value.trim().toLowerCase();
+  const p1=document.getElementById('email-reg-password').value;
+  const p2=document.getElementById('email-reg-password2').value;
+  const err=document.getElementById('email-reg-err'); const info=document.getElementById('email-reg-info');
+  const btn=document.getElementById('email-reg-btn');
+  err.textContent=''; info.textContent='';
+  if(!un||un.length<3){err.textContent='Username must be at least 3 characters.';return;}
+  if(!/^[a-z0-9_]+$/.test(un)){err.textContent='Username: only letters, numbers, and underscores.';return;}
+  if(!email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){err.textContent='Please enter a valid email.';return;}
+  if(!p1||p1.length<6){err.textContent='Password must be at least 6 characters.';return;}
+  if(p1!==p2){err.textContent='Passwords do not match.';return;}
+  btn.disabled=true; btn.textContent='Creating...';
+
+  const users=await window._fb.fbGetUsers();
+  if(users.find(u=>u.username===un)){err.textContent='Username already taken — pick another.';btn.disabled=false;btn.textContent='Create my account ✨';return;}
+  if(users.find(u=>u.email===email)){err.textContent='That email is already registered. Try logging in.';btn.disabled=false;btn.textContent='Create my account ✨';return;}
+
+  // Create Firebase Auth account
+  const r=await window._fb.fbEmailRegister(email,p1);
+  if(!r.ok){err.textContent=r.error;btn.disabled=false;btn.textContent='Create my account ✨';return;}
+
+  // Save user profile in Firestore (no PIN — auth handles credentials)
+  const isFirst=users.length===0;
+  const newUser={
+    username:un, email, uid:r.uid,
+    authMethod:'email',
+    role:isFirst?'admin':'user',
+    createdAt:Date.now()
+  };
+  await window._fb.fbSaveUser(newUser);
+  await window._fb.fbSaveUserData(un,{transactions:[],budgets:{}});
+
+  showToast(isFirst?'Admin account created 👑':'Welcome aboard! 🎉');
+  // Auto-login: we already have a Firebase Auth session from createUser
+  cu=newUser;
+  localStorage.setItem("trackit_user", un);
+  localStorage.setItem("trackit_authMethod", "email");
+  uState={transactions:[],budgets:{},currentYear:new Date().getFullYear(),currentMonth:new Date().getMonth()};
+  btn.disabled=false; btn.textContent='Create my account ✨';
+  enterApp();
+}
+
+// ── EMAIL LOGIN ──────────────────────────────────────────────────
+async function doEmailLogin(){
+  const email=document.getElementById('email-login-email').value.trim().toLowerCase();
+  const pwd=document.getElementById('email-login-password').value;
+  const err=document.getElementById('email-login-err'); const info=document.getElementById('email-login-info');
+  const btn=document.getElementById('email-login-btn');
+  err.textContent=''; info.textContent='';
+  if(!email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){err.textContent='Please enter a valid email.';return;}
+  if(!pwd){err.textContent='Enter your password.';return;}
+  btn.disabled=true; btn.textContent='Logging in...'; info.textContent='Checking credentials...';
+
+  const r=await window._fb.fbEmailLogin(email,pwd);
+  if(!r.ok){
+    err.textContent=r.error;
+    btn.disabled=false; btn.textContent='Let me in →'; info.textContent='';
+    return;
+  }
+
+  info.textContent='Loading your data...';
+  // Find Firestore profile by email
+  const users=await window._fb.fbGetUsers();
+  const user=users.find(u=>u.email===email || u.uid===r.uid);
+  if(!user){
+    // Edge case: auth user exists but no Firestore profile (e.g., created outside app). Sign out cleanly.
+    await window._fb.fbEmailLogout();
+    err.textContent='No profile found for this account. Contact admin.';
+    btn.disabled=false; btn.textContent='Let me in →'; info.textContent='';
+    return;
+  }
+
+  cu=user;
+  localStorage.setItem("trackit_user", user.username);
+  localStorage.setItem("trackit_authMethod", "email");
+  const data=await window._fb.fbGetUserData(user.username);
+  uState={...data, currentYear:new Date().getFullYear(), currentMonth:new Date().getMonth()};
+  if(!uState.transactions) uState.transactions=[];
+  if(!uState.budgets) uState.budgets={};
+  document.getElementById('email-login-email').value='';
+  document.getElementById('email-login-password').value='';
+  btn.disabled=false; btn.textContent='Let me in →'; info.textContent='';
+  enterApp();
+}
+
+// ── PASSWORD RESET ───────────────────────────────────────────────
+async function doSendReset(){
+  const email=document.getElementById('email-forgot-email').value.trim().toLowerCase();
+  const err=document.getElementById('email-forgot-err'); const info=document.getElementById('email-forgot-info');
+  const btn=document.getElementById('email-forgot-btn');
+  err.textContent=''; info.textContent='';
+  if(!email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){err.textContent='Please enter a valid email.';return;}
+  btn.disabled=true; btn.textContent='Sending...';
+  const r=await window._fb.fbSendReset(email);
+  btn.disabled=false; btn.textContent='Send reset link 📧';
+  if(!r.ok){
+    // For security, Firebase doesn't tell us if the email exists. Show generic success in most cases.
+    if(r.error && r.error.toLowerCase().includes('not enabled')) err.textContent=r.error;
+    else info.textContent='If that email is registered, a reset link has been sent. Check your inbox (and spam).';
+    return;
+  }
+  info.textContent='Reset link sent! Check your inbox (and spam folder) ✓';
+  showToast('Reset email sent ✓');
+}
+
 // ── LOGOUT ────────────────────────────────────────────────────────
 async function doLogout(){
   await saveUD();
+  const method = localStorage.getItem("trackit_authMethod");
+  if(method==='email'){
+    try { await window._fb.fbEmailLogout(); } catch(e){}
+  }
   localStorage.removeItem("trackit_user");
+  localStorage.removeItem("trackit_authMethod");
   cu=null; editingId=null; donutInst=null; barInst=null;
   document.getElementById('app').style.display='none';
   document.getElementById('auth-screen').style.display='flex';
@@ -1738,6 +2047,8 @@ async function doLogout(){
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-dashboard').classList.add('active');
   document.querySelectorAll('.sb-tab').forEach((b,i)=>b.classList.toggle('active',i===0));
+  // Reset to email method (default)
+  switchMethod('email');
 }
 
 // ── SYNC ──────────────────────────────────────────────────────────
@@ -2072,12 +2383,24 @@ async function renderAdmin(){
   }));
   document.getElementById('admin-grid').innerHTML=stats.map(u=>{
     const isSelf=u.username===cu.username;
+    const method = u.authMethod || (u.pin ? 'pin' : (u.email ? 'email' : 'pin'));
+    const methodBadge = method==='email'
+      ? '<span class="auth-method-badge email">✉ Email</span>'
+      : '<span class="auth-method-badge pin">⚿ PIN</span>';
+    const emailLine = u.email ? `<div class="admin-role" style="color:var(--ink-2);font-weight:500;">${u.email}</div>` : '';
+
+    // Reset action depends on method
+    const resetBtn = method==='email'
+      ? `<button class="btn btn-ghost btn-sm" onclick="adminSendResetEmail('${u.email||''}')">Send Reset Email</button>`
+      : `<button class="btn btn-ghost btn-sm" onclick="openResetModal('${u.username}')">Reset PIN</button>`;
+
     return `<div class="admin-user-card">
       <div class="admin-user-head">
         <div class="admin-avatar">${u.username[0].toUpperCase()}</div>
-        <div>
+        <div style="flex:1;min-width:0;">
           <div class="admin-username">${u.username}${u.role==='admin'?'<span class="badge-admin">Admin</span>':''}</div>
-          <div class="admin-role">Joined ${new Date(u.createdAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
+          <div class="admin-role">${methodBadge} · Joined ${new Date(u.createdAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
+          ${emailLine}
         </div>
       </div>
       <div class="admin-stats">
@@ -2085,12 +2408,20 @@ async function renderAdmin(){
         <div class="admin-stat">Total Spent<span>${fmt(u.spent)}</span></div>
       </div>
       <div class="admin-actions">
-        <button class="btn btn-ghost btn-sm" onclick="openResetModal('${u.username}')">Reset PIN</button>
+        ${resetBtn}
         ${!isSelf?`<button class="btn btn-danger btn-sm" onclick="adminDelete('${u.username}')">Delete</button>`:''}
         ${!isSelf&&u.role!=='admin'?`<button class="btn btn-edit btn-sm" onclick="adminMakeAdmin('${u.username}')">Make Admin</button>`:''}
       </div>
     </div>`;
   }).join('');
+}
+
+async function adminSendResetEmail(email){
+  if(!email){showToast('No email on file for this user');return;}
+  if(!confirm(`Send a password reset email to ${email}?`))return;
+  const r=await window._fb.fbSendReset(email);
+  if(r.ok){showToast(`Reset email sent to ${email} ✓`);}
+  else {showToast('Could not send: '+r.error);}
 }
 
 async function adminDelete(un){
@@ -2142,6 +2473,11 @@ window.startEdit=startEdit; window.cancelEdit=cancelEdit; window.deleteTx=delete
 window.jumpToMonth=jumpToMonth; window.openResetModal=openResetModal; window.closeResetModal=closeResetModal;
 window.confirmResetPin=confirmResetPin; window.adminDelete=adminDelete; window.adminMakeAdmin=adminMakeAdmin;
 window.exportCSV=exportCSV;
+// Email auth
+window.switchMethod=switchMethod; window.switchEmailTab=switchEmailTab;
+window.showForgotPanel=showForgotPanel; window.hideForgotPanel=hideForgotPanel;
+window.doEmailLogin=doEmailLogin; window.doEmailRegister=doEmailRegister; window.doSendReset=doSendReset;
+window.adminSendResetEmail=adminSendResetEmail;
 </script>
 </body>
 </html>
