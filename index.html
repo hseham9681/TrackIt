@@ -1764,6 +1764,14 @@ let fbReady=false;
 window.addEventListener('firebaseReady', ()=>{ fbReady=true; onFirebaseReady(); });
 
 async function onFirebaseReady(){
+  // ── CLEANUP: remove legacy localStorage keys from older versions of TrackIt
+  // Older versions stored ALL users (including PINs) and full transaction data
+  // in localStorage — that's a privacy issue. We only need username + method.
+  try {
+    const legacyKeys = ['trackit-store', 'trackit-v2', 'trackit-data', 'trackit-users', 'trackit-transactions'];
+    legacyKeys.forEach(k => { if(localStorage.getItem(k)) localStorage.removeItem(k); });
+  } catch(e){}
+
   try {
     const s = await window._fb.fbGetSettings();
     darkMode = s.darkMode || false;
